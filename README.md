@@ -33,56 +33,14 @@ In short: this is a small, self-contained version of what a company's security t
 
 ## Architecture
 
-```
-┌─────────────────────── AWS ACCOUNT ───────────────────────┐
-│                                                             │
-│   IAM              CloudTrail             S3 Bucket        │
-│    │                    │                      │           │
-│    │                    ▼                      │           │
-│    │             Security Events ──────────────┘           │
-│    │                                            │           │
-└────┼────────────────────────────────────────────┼──────────┘
-     │                                             │
-     │                                     S3 Event Notification
-     │                                             │
-     │                                             ▼
-     │                                      ┌─────────────┐
-     │                                      │  SQS Queue  │
-     │                                      └──────┬──────┘
-     │                                             │
-     │                                      Polled by add-on
-     │                                             ▼
-     │                                      ┌─────────────┐
-     │                                      │    SPLUNK   │
-     │                                      │     SIEM    │
-     │                                      └──────┬──────┘
-     │                                             │
-     │                                      SPL Searches
-     │                                      Detections
-     │                                      Alerts
-     │                                      Dashboards
-     │                                             │
-     │                                             ▼
-     │                                   ┌──────────────────┐
-     │                                   │   Investigation  │
-     │                                   │                  │
-     │                                   │ Timeline         │
-     │                                   │ Evidence         │
-     │                                   │ Threat Hunting   │
-     │                                   │ Incident Report  │
-     │                                   └──────────────────┘
-     │
-     ▼
- Remediation (human-controlled)
-     │
-     ▼
- Validation
-```
+![Architecture diagram: AWS CloudTrail + Splunk pipeline, identities, and the 8-step Generate → Collect → Detect → Hunt → Investigate → Document → Remediate → Validate workflow](screenshots/architecture-diagram.png)
+
+The pipeline flows left to right: **IAM activity → CloudTrail → S3 → SQS (via S3 event notification) → Splunk**, where SPL searches turn raw events into detections, alerts, and dashboards. From there, every finding moves through the same 8-step loop this project is built around: **Generate → Collect → Detect → Hunt → Investigate → Document → Remediate → Validate**, with remediation kept strictly human-controlled.
 
 **Identity design:** three separate IAM identities, each with a distinct, scoped role — mirroring least-privilege practice in a real environment:
-- **Admin (`lab-admin`)** — builds infrastructure, has `AdministratorAccess`, MFA-protected, used for all setup work
+- **`lab-admin`** — builds infrastructure, has `AdministratorAccess`, MFA-protected, used for all setup work
 - **`security-auditor`** — the "activity generator." Intentionally scoped to only the permissions needed to trigger the behaviors this lab detects (IAM actions, security-group changes) — not full admin
-- **`cloudtrail-detector`** — legacy read-only identity from an earlier project, kept as-is
+- **`analyst`** (implemented as `cloudtrail-detector`, a read-only identity carried over from an earlier project) — read-only access, used for reviewing alerts and logs during investigation and hunting, never for generating activity or making changes
 
 ---
 
